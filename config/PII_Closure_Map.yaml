@@ -1,0 +1,93 @@
+# PII_Closure_Map for chora-delivery domain.
+#
+# Source-of-truth: .claude/skills/account-closure-saga/SKILL.md
+# Owning team: Team 2 (Delivery). Owning DB: chora_delivery.
+#
+# Delivery hosts Course / Booking / Certification / Rostering. The closed
+# user may have:
+# - Issued certifications (PRESERVE — credential remains valid even after
+#   user closes account; tokenise display only)
+# - Active bookings (cancel + tokenise)
+# - SkillsFutures funding records (subject to gov regulator retention)
+
+domain: chora_delivery
+version: "1.0"
+
+fields_to_tokenize:
+  - table: certifications
+    columns:
+      # Certification record is regulator-relevant; preserve credential ID
+      # and date; tokenise human identifiers.
+      - column: holder_display_name
+        strategy: tombstone_string
+        value: "Former member"
+      - column: holder_email_snapshot
+        strategy: tombstone_email
+        value: "user-{hash}@redacted.invalid"
+
+  - table: bookings
+    columns:
+      - column: attendee_display_name
+        strategy: tombstone_string
+        value: "Former member"
+      - column: attendee_email_snapshot
+        strategy: tombstone_email
+        value: "user-{hash}@redacted.invalid"
+
+  - table: course_enrollment
+    columns:
+      - column: enrollee_display_name
+        strategy: tombstone_string
+        value: "Former member"
+      - column: enrollee_email_snapshot
+        strategy: tombstone_email
+        value: "user-{hash}@redacted.invalid"
+
+  - table: rostering_assignment
+    columns:
+      - column: instructor_display_name
+        strategy: tombstone_string
+        value: "Former member"
+
+  - table: skillsfutures_claims
+    columns:
+      # SkillsFutures Singapore retention is governed by the regulator —
+      # do NOT drop NRIC hash early. Tokenise free-text only.
+      - column: nric_hash
+        strategy: preserve  # 7y SG regulator retention
+        value: ""
+      - column: claimant_display_name
+        strategy: tombstone_string
+        value: "Former member"
+
+  - table: project_groups
+    columns:
+      # ProjectGroup = collaborative course project. The closing user is
+      # one of N members; preserve aggregate, tokenise display.
+      - column: member_display_name
+        strategy: tombstone_string
+        value: "Former member"
+
+  - table: classroom_attendance_log
+    columns:
+      # Attendance for QR-checkin (ADR-087); tokenise device fingerprint.
+      - column: attendee_display_name
+        strategy: tombstone_string
+        value: "Former member"
+      - column: device_fingerprint
+        strategy: drop
+        value: ""
+
+retention_days_by_jurisdiction:
+  EU: 2557
+  SG: 2557
+  US: 1826
+  ZA: 1826
+  BR: 1826
+  default: 2557
+
+on_creator_closure:
+  # An instructor (now closing) may have authored Course/Class records.
+  # Course persists for other learners; instructor display is tokenised.
+  strategy: tokenise_authorship_keep_atom
+  show_authorship_as: "Former member"
