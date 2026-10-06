@@ -71,3 +71,60 @@ func TestPaymentsSubscriber_ApplicationRefunded_NonCustomPublisherSkipsAudit(t *
 		t.Fatalf("expected withdrawn FSM event, got %q", hist[0].Topic)
 	}
 }
+
+// noCustomPublisher implements events.Publisher WITHOUT the optional
+// PublishCustom capability (the assertion in CourseContentPublisher /
+// ExamResultPublisher depends on its absence). Plain struct — an embedded
+// *events.InMemoryPublisher would promote PublishCustom.
+type noCustomPublisher struct {
+	inner *events.InMemoryPublisher
+}
+
+func (n *noCustomPublisher) PublishCourseCreated(in events.CourseCreated) (events.PublishedEvent, error) {
+	return n.inner.PublishCourseCreated(in)
+}
+func (n *noCustomPublisher) PublishCoursePublished(in events.CoursePublished) (events.PublishedEvent, error) {
+	return n.inner.PublishCoursePublished(in)
+}
+func (n *noCustomPublisher) PublishEnrollmentCreated(in events.EnrollmentCreated) (events.PublishedEvent, error) {
+	return n.inner.PublishEnrollmentCreated(in)
+}
+func (n *noCustomPublisher) PublishEnrollmentCancelled(in events.EnrollmentCancelled) (events.PublishedEvent, error) {
+	return n.inner.PublishEnrollmentCancelled(in)
+}
+func (n *noCustomPublisher) PublishEnrollmentCompleted(in events.EnrollmentCompleted) (events.PublishedEvent, error) {
+	return n.inner.PublishEnrollmentCompleted(in)
+}
+func (n *noCustomPublisher) PublishBookingConfirmed(in events.BookingConfirmed) (events.PublishedEvent, error) {
+	return n.inner.PublishBookingConfirmed(in)
+}
+func (n *noCustomPublisher) PublishCertificationIssued(in events.CertificationIssued) (events.PublishedEvent, error) {
+	return n.inner.PublishCertificationIssued(in)
+}
+func (n *noCustomPublisher) PublishApplicationStateChanged(app *application.Application, traceparent string) (events.PublishedEvent, error) {
+	return n.inner.PublishApplicationStateChanged(app, traceparent)
+}
+func (n *noCustomPublisher) PublishTestSetCreated(in events.TestSetCreated) (events.PublishedEvent, error) {
+	return n.inner.PublishTestSetCreated(in)
+}
+func (n *noCustomPublisher) PublishTestSetQuestionAdded(in events.TestSetQuestionAdded) (events.PublishedEvent, error) {
+	return n.inner.PublishTestSetQuestionAdded(in)
+}
+func (n *noCustomPublisher) PublishTestSetQuestionUpdated(in events.TestSetQuestionUpdated) (events.PublishedEvent, error) {
+	return n.inner.PublishTestSetQuestionUpdated(in)
+}
+func (n *noCustomPublisher) PublishTestSetQuestionRemoved(in events.TestSetQuestionRemoved) (events.PublishedEvent, error) {
+	return n.inner.PublishTestSetQuestionRemoved(in)
+}
+func (n *noCustomPublisher) PublishTestSetPublished(in events.TestSetPublished) (events.PublishedEvent, error) {
+	return n.inner.PublishTestSetPublished(in)
+}
+func (n *noCustomPublisher) PublishLiveQuizScoreAwarded(in events.LiveQuizScoreAwarded) (events.PublishedEvent, error) {
+	return n.inner.PublishLiveQuizScoreAwarded(in)
+}
+func (n *noCustomPublisher) PublishLiveQuizSessionStarted(in events.LiveQuizSessionStarted) (events.PublishedEvent, error) {
+	return n.inner.PublishLiveQuizSessionStarted(in)
+}
+func (n *noCustomPublisher) PublishLiveQuizSessionEnded(in events.LiveQuizSessionEnded) (events.PublishedEvent, error) {
+	return n.inner.PublishLiveQuizSessionEnded(in)
+}
