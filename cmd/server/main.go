@@ -591,7 +591,7 @@ func main() {
 	// CHORA_PAYMENTS_GRPC_ADDR. Per `feedback_no_stubs_real_wiring`: we
 	// FAIL LOUD when the env var is unset — chora-delivery cannot mint a
 	// Stripe Checkout Session without the canonical chora-payments
-	// upstream. Defaults to the in-mesh chora-payments:9090 endpoint.
+	// upstream. Defaults to the in-mesh payments:9090 endpoint.
 	//
 	// mTLS sidecar (Cloud Service Mesh) terminates TLS so the dial uses
 	// plain insecure credentials inside the mesh. The scoped
@@ -599,7 +599,7 @@ func main() {
 	// reach the PaymentService RPC.
 	paymentsGRPCAddr := strings.TrimSpace(os.Getenv("CHORA_PAYMENTS_GRPC_ADDR"))
 	if paymentsGRPCAddr == "" {
-		paymentsGRPCAddr = "chora-payments:9090"
+		paymentsGRPCAddr = "payments:9090"
 	}
 	paymentsConn, paymentsDialErr := grpc.NewClient(
 		paymentsGRPCAddr,

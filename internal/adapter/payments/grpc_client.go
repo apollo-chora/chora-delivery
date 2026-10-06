@@ -18,7 +18,7 @@
 // events. This sync gRPC is the sanctioned synchronous write channel.
 //
 // Per `feedback_no_inline_config`: the upstream URL is sourced from env
-// (`CHORA_PAYMENTS_GRPC_ADDR`, default `chora-payments:9090` in the mesh).
+// (`CHORA_PAYMENTS_GRPC_ADDR`, default `payments:9090` in the mesh).
 // Construction happens in cmd/server/main.go; this file is config-free.
 //
 // Per `feedback_no_stubs_real_wiring` — input validation rejects empty
