@@ -277,15 +277,16 @@ func removeContent(w http.ResponseWriter, r *http.Request, deps *CourseContentDe
 }
 
 // contentDTO projects the aggregate onto the OpenAPI CourseContent shape,
-// resolving gs:// refs to fresh signed GET URLs via the MediaResolver so the
-// instructor editor can preview uploaded media. The stored gs:// ref is
-// preserved under `object_ref` so a re-save round-trips the durable URI (the
-// resolved signed URL is ephemeral and must NOT be persisted).
+// resolving durable s3:// / gs:// refs to fresh signed GET URLs via the
+// MediaResolver so the instructor editor can preview uploaded media. The
+// stored durable ref is preserved under `object_ref` so a re-save round-trips
+// the durable URI (the resolved signed URL is ephemeral and must NOT be
+// persisted).
 func contentDTO(ctx context.Context, deps *CourseContentDeps, tenantID string, c *cc.CourseContent) map[string]any {
-	// Collect gs:// refs and resolve them in one batched call.
+	// Collect course-media refs and resolve them in one batched call.
 	var gsRefs []string
 	for _, it := range c.Items {
-		if strings.HasPrefix(it.Ref, "gs://") {
+		if isDurableCourseMediaRef(it.Ref) {
 			gsRefs = append(gsRefs, it.Ref)
 		}
 	}
@@ -305,7 +306,7 @@ func contentDTO(ctx context.Context, deps *CourseContentDeps, tenantID string, c
 		}
 		if signed, ok := resolved[it.Ref]; ok {
 			// Surface the playable/downloadable signed URL as `ref`, keep the
-			// durable gs:// URI under `object_ref` for round-tripping.
+			// durable s3:// / gs:// URI under `object_ref` for round-tripping.
 			row["object_ref"] = it.Ref
 			row["ref"] = signed
 		}
