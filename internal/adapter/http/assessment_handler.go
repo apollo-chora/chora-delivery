@@ -77,12 +77,12 @@ type AssessmentDeps struct {
 	// zero-credit per-MCQ grading (fail loud per ErrMCQSnapshotMissing).
 	TestSets TestSetPort
 
-	// MediaResolver resolves durable atom-media gs:// image refs (frozen in
-	// the payload_snapshot) into fresh short-lived signed GET URLs at learner
-	// read-time (OT#4 — W8 durable image re-home). Satisfied by
+	// MediaResolver resolves durable atom-media s3:// / gs:// image refs
+	// (frozen in the payload_snapshot) into fresh short-lived signed GET URLs
+	// at learner read-time (OT#4 — W8 durable image re-home). Satisfied by
 	// clients.QuestionClient over chora-creation's MintAtomMediaDownloadURL
-	// gRPC. Optional; nil → gs:// refs pass through raw (fail-visible). Old
-	// http transient URLs are never touched (only gs:// refs resolve).
+	// gRPC. Optional; nil → durable refs pass through raw (fail-visible).
+	// Old http transient URLs are never touched (only durable refs resolve).
 	MediaResolver MediaURLResolver
 
 	// LearnerDirectory resolves a learner GCID → display name for the
@@ -105,9 +105,9 @@ type SubmissionLearnerNameResolver interface {
 	LookupNames(ctx context.Context, gcids []string) (map[string]string, error)
 }
 
-// MediaURLResolver maps durable atom-media gs:// refs to fresh signed GET
-// URLs. Best-effort: refs that fail to mint are omitted from the result
-// (the caller leaves the raw gs:// — a visible broken image, not a crash).
+// MediaURLResolver maps durable atom-media s3:// / gs:// refs to fresh signed
+// GET URLs. Best-effort: refs that fail to mint are omitted from the result
+// (the caller leaves the raw ref — a visible broken image, not a crash).
 type MediaURLResolver interface {
 	ResolveDownloadURLs(ctx context.Context, tenantID string, gsURIs []string) map[string]string
 }
@@ -1315,8 +1315,9 @@ func myResultHandler(adeps *AssessmentDeps, assessmentID, submissionID string, w
 	// payload_snapshot. Same lookup path as inline MCQ grading uses; per
 	// ddd-enforcement #3 NEVER cross-DB query chora_creation at runtime.
 	snapshots, _ := loadMCQSnapshotsForSubmission(adeps, sub, r)
-	// OT#4 — resolve durable gs:// model-answer AND question/stem images to
-	// fresh signed URLs before the reveal projects them (one batched RPC).
+	// OT#4 — resolve durable s3:// / gs:// model-answer AND question/stem
+	// images to fresh signed URLs before the reveal projects them (one
+	// batched RPC).
 	resolveSnapshotImages(r.Context(), adeps, tenantID, snapshots)
 
 	// shuffle_mcq_options — mirror the take-time per-learner option order in the
@@ -1336,11 +1337,12 @@ func myResultHandler(adeps *AssessmentDeps, assessmentID, submissionID string, w
 	// snapshot JSON keyed by test_set_question_id so we can run the
 	// AUTHOR-SAFE projection at reveal time without re-querying the port.
 	oeSnapshots := loadOESnapshotJSONsForSubmission(adeps, sub, r)
-	// ADR-172 — resolve the OE snapshots' durable gs:// stem (image_url) AND
-	// model-answer (answer_image_url) images to fresh signed URLs the same way
-	// MCQ does (resolveSnapshotImages). Returns per-test_set_question_id
-	// {question_image_url, answer_image_url} signed strings (gs:// passed
-	// through the MediaResolver; old http URLs kept raw). Mirrors the MCQ path.
+	// ADR-172 — resolve the OE snapshots' durable s3:// / gs:// stem
+	// (image_url) AND model-answer (answer_image_url) images to fresh signed
+	// URLs the same way MCQ does (resolveSnapshotImages). Returns
+	// per-test_set_question_id {question_image_url, answer_image_url} signed
+	// strings (durable refs passed through the MediaResolver; old http URLs
+	// kept raw). Mirrors the MCQ path.
 	oeImages := resolveOESnapshotImages(r.Context(), adeps, tenantID, oeSnapshots)
 
 	perQ := make([]map[string]interface{}, 0, len(sub.Answers))
@@ -1651,18 +1653,18 @@ func learnerAssessmentDetailDTO(ctx context.Context, a *domain.Assessment, learn
 			shuffleOptionRows(opts, optionShuffleSeed(learnerGCID, tsqID))
 		}
 	}
-	// OT#4 — resolve durable gs:// stem images to fresh signed GET URLs in a
-	// single batched RPC so the learner's <img> renders past the 7-day
-	// transient-bucket TTL. No-op for old http URLs + when unwired.
+	// OT#4 — resolve durable s3:// / gs:// stem images to fresh signed GET
+	// URLs in a single batched RPC so the learner's <img> renders past the
+	// 7-day transient-bucket TTL. No-op for old http URLs + when unwired.
 	resolveLearnerQuestionImages(ctx, adeps, a.TenantID, dtos)
 	out["questions"] = dtos
 	return out
 }
 
-// resolveLearnerQuestionImages rewrites durable gs:// `prompt.image_url` refs
-// across the learner question DTOs to fresh signed URLs via one batched
+// resolveLearnerQuestionImages rewrites durable s3:// / gs:// `prompt.image_url`
+// refs across the learner question DTOs to fresh signed URLs via one batched
 // MintAtomMediaDownloadURL RPC. No-op when the resolver is unwired or no
-// gs:// refs are present; an unresolved ref is left raw (fail-visible).
+// durable refs are present; an unresolved ref is left raw (fail-visible).
 func resolveLearnerQuestionImages(ctx context.Context, adeps *AssessmentDeps, tenantID string, dtos []map[string]interface{}) {
 	if adeps == nil || adeps.MediaResolver == nil {
 		return
@@ -1670,7 +1672,7 @@ func resolveLearnerQuestionImages(ctx context.Context, adeps *AssessmentDeps, te
 	var refs []string
 	for _, d := range dtos {
 		if p, ok := d["prompt"].(map[string]interface{}); ok {
-			if u, ok := p["image_url"].(string); ok && strings.HasPrefix(u, "gs://") {
+			if u, ok := p["image_url"].(string); ok && isDurableMediaRef(u) {
 				refs = append(refs, u)
 			}
 		}
@@ -1693,21 +1695,22 @@ func resolveLearnerQuestionImages(ctx context.Context, adeps *AssessmentDeps, te
 	}
 }
 
-// resolveSnapshotImages rewrites durable gs:// image refs on the loaded MCQ
-// snapshots — BOTH the model-answer illustration (AnswerImageURL) AND the
-// question/stem illustration (ImageURL) — to fresh signed URLs in ONE batched
-// RPC before the result reveal projects them. MCQSnapshot is a value type in
-// the map, so mutated copies are written back. No-op when unwired / no gs://.
+// resolveSnapshotImages rewrites durable s3:// / gs:// image refs on the
+// loaded MCQ snapshots — BOTH the model-answer illustration (AnswerImageURL)
+// AND the question/stem illustration (ImageURL) — to fresh signed URLs in
+// ONE batched RPC before the result reveal projects them. MCQSnapshot is a
+// value type in the map, so mutated copies are written back. No-op when
+// unwired / no durable refs.
 func resolveSnapshotImages(ctx context.Context, adeps *AssessmentDeps, tenantID string, snapshots map[string]domain.MCQSnapshot) {
 	if adeps == nil || adeps.MediaResolver == nil {
 		return
 	}
 	var refs []string
 	for _, s := range snapshots {
-		if s.AnswerImageURL != nil && strings.HasPrefix(*s.AnswerImageURL, "gs://") {
+		if s.AnswerImageURL != nil && isDurableMediaRef(*s.AnswerImageURL) {
 			refs = append(refs, *s.AnswerImageURL)
 		}
-		if s.ImageURL != nil && strings.HasPrefix(*s.ImageURL, "gs://") {
+		if s.ImageURL != nil && isDurableMediaRef(*s.ImageURL) {
 			refs = append(refs, *s.ImageURL)
 		}
 	}
@@ -1748,15 +1751,15 @@ type oeImageURLs struct {
 	AnswerImageURL   string
 }
 
-// resolveOESnapshotImages parses each OE snapshot's top-level gs:// image_url
+// resolveOESnapshotImages parses each OE snapshot's top-level image_url
 // (stem) + answer_image_url (model-answer) refs and resolves them to fresh
 // signed GET URLs via ONE batched MintAtomMediaDownloadURL RPC — the exact
 // MCQ path (resolveSnapshotImages), but over the raw OE snapshot JSON (OE
 // snapshots are kept as raw strings, not the typed MCQSnapshot). Returns a
 // per-test_set_question_id map of the resolved URLs. No-op (empty map) when
-// the resolver is unwired or no gs:// refs are present; old http URLs / any
-// unresolved ref are passed through raw (fail-visible). Mirrors MCQ; never
-// touches the MCQ path.
+// the resolver is unwired or no durable refs are present; old http URLs /
+// any unresolved ref are passed through raw (fail-visible). Mirrors MCQ;
+// never touches the MCQ path.
 func resolveOESnapshotImages(ctx context.Context, adeps *AssessmentDeps, tenantID string, oeSnapshots map[string]string) map[string]oeImageURLs {
 	out := make(map[string]oeImageURLs, len(oeSnapshots))
 	if len(oeSnapshots) == 0 {
@@ -1783,14 +1786,14 @@ func resolveOESnapshotImages(ctx context.Context, adeps *AssessmentDeps, tenantI
 			continue
 		}
 		perQ[tsqID] = rawRefs{q: q, a: a}
-		if strings.HasPrefix(q, "gs://") {
+		if isDurableMediaRef(q) {
 			refs = append(refs, q)
 		}
-		if strings.HasPrefix(a, "gs://") {
+		if isDurableMediaRef(a) {
 			refs = append(refs, a)
 		}
 	}
-	// Resolve gs:// refs in one batched RPC (skip when unwired / none present).
+	// Resolve durable refs in one batched RPC (skip when unwired / none present).
 	resolved := map[string]string{}
 	if adeps != nil && adeps.MediaResolver != nil && len(refs) > 0 {
 		resolved = adeps.MediaResolver.ResolveDownloadURLs(ctx, tenantID, refs)
@@ -1802,7 +1805,7 @@ func resolveOESnapshotImages(ctx context.Context, adeps *AssessmentDeps, tenantI
 		if s, ok := resolved[u]; ok && s != "" {
 			return s
 		}
-		return u // non-gs:// or unresolved → pass through raw (fail-visible)
+		return u // non-durable or unresolved → pass through raw (fail-visible)
 	}
 	for tsqID, rr := range perQ {
 		out[tsqID] = oeImageURLs{QuestionImageURL: sign(rr.q), AnswerImageURL: sign(rr.a)}

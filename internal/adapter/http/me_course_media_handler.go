@@ -189,10 +189,11 @@ func meCourseMediaHandler(
 			return
 		}
 
-		// Collect gs:// refs, sign them in one batch, key the result by item_id.
+		// Collect durable s3:// / gs:// refs, sign them in one batch, key the
+		// result by item_id.
 		var gsRefs []string
 		for _, it := range got.Items {
-			if strings.HasPrefix(it.Ref, "gs://") {
+			if isDurableMediaRef(it.Ref) {
 				gsRefs = append(gsRefs, it.Ref)
 			}
 		}
