@@ -189,11 +189,11 @@ func meCourseMediaHandler(
 			return
 		}
 
-		// Collect durable s3:// / gs:// refs, sign them in one batch, key the
-		// result by item_id.
+		// Collect course-media refs, sign them in one batch, key the result by
+		// item_id. gs:// only — the delivery-owned course-media contract.
 		var gsRefs []string
 		for _, it := range got.Items {
-			if isDurableMediaRef(it.Ref) {
+			if isDurableCourseMediaRef(it.Ref) {
 				gsRefs = append(gsRefs, it.Ref)
 			}
 		}

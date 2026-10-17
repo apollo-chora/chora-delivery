@@ -283,10 +283,10 @@ func removeContent(w http.ResponseWriter, r *http.Request, deps *CourseContentDe
 // the durable URI (the resolved signed URL is ephemeral and must NOT be
 // persisted).
 func contentDTO(ctx context.Context, deps *CourseContentDeps, tenantID string, c *cc.CourseContent) map[string]any {
-	// Collect durable refs and resolve them in one batched call.
+	// Collect course-media refs and resolve them in one batched call.
 	var gsRefs []string
 	for _, it := range c.Items {
-		if isDurableMediaRef(it.Ref) {
+		if isDurableCourseMediaRef(it.Ref) {
 			gsRefs = append(gsRefs, it.Ref)
 		}
 	}

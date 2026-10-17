@@ -1672,7 +1672,7 @@ func resolveLearnerQuestionImages(ctx context.Context, adeps *AssessmentDeps, te
 	var refs []string
 	for _, d := range dtos {
 		if p, ok := d["prompt"].(map[string]interface{}); ok {
-			if u, ok := p["image_url"].(string); ok && isDurableMediaRef(u) {
+			if u, ok := p["image_url"].(string); ok && isDurableAtomMediaRef(u) {
 				refs = append(refs, u)
 			}
 		}
@@ -1707,10 +1707,10 @@ func resolveSnapshotImages(ctx context.Context, adeps *AssessmentDeps, tenantID 
 	}
 	var refs []string
 	for _, s := range snapshots {
-		if s.AnswerImageURL != nil && isDurableMediaRef(*s.AnswerImageURL) {
+		if s.AnswerImageURL != nil && isDurableAtomMediaRef(*s.AnswerImageURL) {
 			refs = append(refs, *s.AnswerImageURL)
 		}
-		if s.ImageURL != nil && isDurableMediaRef(*s.ImageURL) {
+		if s.ImageURL != nil && isDurableAtomMediaRef(*s.ImageURL) {
 			refs = append(refs, *s.ImageURL)
 		}
 	}
@@ -1786,10 +1786,10 @@ func resolveOESnapshotImages(ctx context.Context, adeps *AssessmentDeps, tenantI
 			continue
 		}
 		perQ[tsqID] = rawRefs{q: q, a: a}
-		if isDurableMediaRef(q) {
+		if isDurableAtomMediaRef(q) {
 			refs = append(refs, q)
 		}
-		if isDurableMediaRef(a) {
+		if isDurableAtomMediaRef(a) {
 			refs = append(refs, a)
 		}
 	}

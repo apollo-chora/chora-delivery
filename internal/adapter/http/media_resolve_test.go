@@ -1,6 +1,7 @@
 // media_resolve_test.go — OT#4 internal TDD for the learner read-time
 // durable-image resolution helpers (resolveLearnerQuestionImages +
-// resolveSnapshotImages) and the shared isDurableMediaRef predicate.
+// resolveSnapshotImages) and the two durable-ref predicates
+// (isDurableAtomMediaRef / isDurableCourseMediaRef).
 // Internal test (package httpapi) so it can reach the unexported helpers.
 package httpapi
 
@@ -31,10 +32,10 @@ func (f *fakeMediaResolver) ResolveDownloadURLs(_ context.Context, _ string, gsU
 
 func strptr(s string) *string { return &s }
 
-// isDurableMediaRef accepts BOTH durable schemes — s3:// (the scheme
-// chora-creation's atom-media re-home now mints) and gs:// (legacy atom-media
-// + delivery's own course-media refs) — and rejects every non-media value.
-func TestIsDurableMediaRef_BothSchemesAndNonMediaExcluded(t *testing.T) {
+// isDurableAtomMediaRef accepts BOTH durable schemes — s3:// (the scheme
+// chora-creation's atom-media re-home now mints) and gs:// (legacy atom-media)
+// — and rejects every non-media value.
+func TestIsDurableAtomMediaRef_BothSchemesAndNonMediaExcluded(t *testing.T) {
 	cases := []struct {
 		ref  string
 		want bool
@@ -42,9 +43,6 @@ func TestIsDurableMediaRef_BothSchemesAndNonMediaExcluded(t *testing.T) {
 		// Durable atom-media refs — both schemes must resolve.
 		{"s3://chora-atom-media-dev/tenants/t/a/stem.png", true},
 		{"gs://chora-atom-media-dev/tenants/t/a/stem.png", true},
-		// Delivery's own course-media refs keep the gs:// scheme.
-		{"gs://chora-delivery-course-media-dev/tenants/t/courses/c/v.mp4", true},
-		{"s3://chora-delivery-course-media-dev/tenants/t/courses/c/v.mp4", true},
 		// Non-media values must NEVER reach the mint RPC.
 		{"https://storage.googleapis.com/transient/x.png?sig=1", false},
 		{"http://cdn.example/x.png", false},
@@ -52,8 +50,34 @@ func TestIsDurableMediaRef_BothSchemesAndNonMediaExcluded(t *testing.T) {
 		{"", false},
 	}
 	for _, tc := range cases {
-		if got := isDurableMediaRef(tc.ref); got != tc.want {
-			t.Errorf("isDurableMediaRef(%q) = %v; want %v", tc.ref, got, tc.want)
+		if got := isDurableAtomMediaRef(tc.ref); got != tc.want {
+			t.Errorf("isDurableAtomMediaRef(%q) = %v; want %v", tc.ref, got, tc.want)
+		}
+	}
+}
+
+// isDurableCourseMediaRef is gs://-ONLY — the delivery-owned course-media
+// contract (domain validation + CourseMediaSigner are both gs://-only). An
+// s3:// course-content ref is NOT a supported value there and must not be
+// collected for course-media resolution.
+func TestIsDurableCourseMediaRef_GSOnlyAndNonMediaExcluded(t *testing.T) {
+	cases := []struct {
+		ref  string
+		want bool
+	}{
+		// Delivery's own course-media refs use the gs:// scheme.
+		{"gs://chora-delivery-course-media-dev/tenants/t/courses/c/v.mp4", true},
+		// An s3:// course-media ref is outside the course-media contract.
+		{"s3://chora-delivery-course-media-dev/tenants/t/courses/c/v.mp4", false},
+		// Non-media values must NEVER reach the signer.
+		{"https://cdn/x.mp4", false},
+		{"http://cdn/x.mp4", false},
+		{"019e30db-0000-7000-8000-0000000000a1", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := isDurableCourseMediaRef(tc.ref); got != tc.want {
+			t.Errorf("isDurableCourseMediaRef(%q) = %v; want %v", tc.ref, got, tc.want)
 		}
 	}
 }
